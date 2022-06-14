@@ -1,6 +1,6 @@
 {
-  "name": "readablestream",
-  "version": "1.0.0",
+  "name": "readable-stream-polyfill",
+  "version": "0.0.0",
   "main": "./build/index.js",
   "author": "Artem Zakharchenko",
   "license": "MIT",
@@ -12,7 +12,7 @@
   },
   "files": [
     "build",
-    "polyfill"
+    "inject"
   ],
   "devDependencies": {
     "@types/jest": "^28.1.1",

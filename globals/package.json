@@ -1,0 +1,4 @@
+{
+  "main": "../build/globals.js",
+  "typings": "../build/globals.d.ts"
+}

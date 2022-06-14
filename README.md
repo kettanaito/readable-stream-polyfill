@@ -1,17 +1,17 @@
 # `ReadableStream`
 
-A WHATWG-compliant polyfill for `ReadableStream` based on the eponymous implementation in Node.js.
+A [WHATWG-compliant](https://streams.spec.whatwg.org/#readablestream) polyfill for `ReadableStream` based on the eponymous implementation in Node.js.
 
 ## Install
 
 ```sh
-npm install readablestream
+npm install readable-stream-polyfill
 ```
 
 ## Node.js API
 
 ```js
-const { ReadableStream } = require('readablestream')
+const { ReadableStream } = require('readable-stream-polyfill')
 
 const stream = new ReadableStream({
   start(controller) {
@@ -29,7 +29,7 @@ const reader = await stream.getReader()
 ```js
 // Polyfills the global "ReadableStream" class
 // if it's not already implemented.
-require('readablestream/polyfill')
+require('readable-stream-polyfill/globals')
 ```
 
 ## Usage

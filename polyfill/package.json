@@ -1,4 +1,0 @@
-{
-  "main": "../build/polyfill.js",
-  "typings": "../build/polyfill.d.ts"
-}
