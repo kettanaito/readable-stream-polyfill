@@ -1,6 +1,6 @@
 import { ReadableStream } from '../src/ReadableStream'
 
-it('behaves like a fetch ReadableStream', async () => {
+it('enqueues and reads multiple strnig chunks', async () => {
   const stream = new ReadableStream<string>({
     async start(controller) {
       controller.enqueue('hello')
@@ -22,5 +22,5 @@ it('behaves like a fetch ReadableStream', async () => {
     chunks.push(value)
   }
 
-  expect(chunks).toBe('hello world')
+  expect(chunks).toEqual(['hello', 'world'])
 })

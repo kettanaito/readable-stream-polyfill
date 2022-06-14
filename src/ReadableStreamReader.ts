@@ -60,5 +60,7 @@ export class ReadableStreamReader<Data> {
     if (this.stream['state'] === ReadableStreamState.Readable) {
       /** @todo */
     }
+
+    this.stream['reader'] = undefined
   }
 }

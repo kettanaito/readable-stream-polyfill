@@ -1,9 +1,9 @@
 import { invariant } from 'outvariant'
-import { ReadableStream } from './ReadableStream'
+import { ReadableStream, ReadableStreamState } from './ReadableStream'
 import { ReadRequest } from './ReadRequest'
 
-function noOpAlgorithm(): Promise<void> {
-  throw new Error('No op')
+async function noOpAlgorithm(): Promise<void> {
+  return
 }
 
 export interface ReadableStreamControllerOptions<Data> {
@@ -38,6 +38,7 @@ export class ReadableStreamController<Data> {
 
   private queue: Array<ReadableStreamControllerQueuedChunk<Data>>
   private queueTotalSize: number
+  private pendingPullIntos: any[]
 
   constructor(options: ReadableStreamControllerOptions<Data>) {
     this.stream = options.stream
@@ -51,10 +52,11 @@ export class ReadableStreamController<Data> {
     this.startAlgorithm = options.startAlgorithm
     this.pullAlgorithm = options.pullAlgorithm || noOpAlgorithm
     this.cancelAlgorithm = options.cancelAlgorithm || noOpAlgorithm
-    this.sizeAlgorithm = options.sizeAlgorithm || noOpAlgorithm
+    this.sizeAlgorithm = options.sizeAlgorithm
 
     this.queue = []
     this.queueTotalSize = 0
+    this.pendingPullIntos = []
 
     /**
      * @see https://github.com/nodejs/node/blob/561f7fe941929d6c10b82b8250c04afb0693e4f3/lib/internal/webstreams/readablestream.js#L1970-L1978
@@ -64,7 +66,7 @@ export class ReadableStreamController<Data> {
         this.state.started = true
         this.pullIfNeeded()
       })
-      .catch(this.handleControllerError)
+      .catch(this.triggerError)
   }
 
   /**
@@ -85,8 +87,16 @@ export class ReadableStreamController<Data> {
       return
     }
 
-    this.stream['reader']?.readRequests.push(readRequest)
+    const reader = this.stream['reader']
+    invariant(reader, 'Reader not set')
+
+    reader.readRequests.push(readRequest)
+
     this.pullIfNeeded()
+  }
+
+  private getReadRequestCount(): number {
+    return this.stream['reader']?.readRequests.length ?? 0
   }
 
   private dequeueChunk() {
@@ -101,8 +111,8 @@ export class ReadableStreamController<Data> {
   public enqueue(chunk: Data): void {
     // If the stream is locked and is being read, then push the queued chunk
     // directly to the read request.
-    if (this.stream.locked && this.stream['reader']?.readRequests.length) {
-      const readRequest = this.stream['reader'].readRequests.shift()
+    if (this.stream.locked && this.getReadRequestCount()) {
+      const readRequest = this.stream['reader']?.readRequests.shift()
 
       if (readRequest) {
         readRequest.chunk(chunk)
@@ -113,7 +123,7 @@ export class ReadableStreamController<Data> {
         this.enqueueValueWithSize(chunk, chunkSize)
       } catch (error) {
         if (error instanceof Error) {
-          this.handleControllerError(error)
+          this.triggerError(error)
         }
         throw error
       }
@@ -132,22 +142,15 @@ export class ReadableStreamController<Data> {
   }
 
   /**
-   * @see https://github.com/nodejs/node/blob/561f7fe941929d6c10b82b8250c04afb0693e4f3/lib/internal/webstreams/readablestream.js#L2011
+   * @see https://github.com/nodejs/node/blob/561f7fe941929d6c10b82b8250c04afb0693e4f3/lib/internal/webstreams/readablestream.js#L1794
    */
   public close(): void {
-    if (this.state.closeRequested) {
-      return
+    this.state.closeRequested = true
+
+    if (!this.queue.length) {
+      this.clearAlgorithms()
+      this.stream.close()
     }
-
-    if (this.queueTotalSize) {
-      this.state.closeRequested = true
-      return
-    }
-
-    /** @todo */
-
-    this.stream['controller'].clearAlgorithms()
-    this.stream.close()
   }
 
   public async cancel(reason?: string): Promise<unknown> {
@@ -161,10 +164,21 @@ export class ReadableStreamController<Data> {
     }
   }
 
+  private canCloseOrEnqueue(): boolean {
+    return (
+      this.state.closeRequested &&
+      this.stream['state'] === ReadableStreamState.Readable
+    )
+  }
+
   /**
    * @see https://github.com/nodejs/node/blob/561f7fe941929d6c10b82b8250c04afb0693e4f3/lib/internal/webstreams/readablestream.js#L1876
    */
   private pullIfNeeded(): void {
+    if (!this.shouldCallPull()) {
+      return
+    }
+
     if (this.state.pulling) {
       this.state.pullAgain = true
       return
@@ -181,13 +195,31 @@ export class ReadableStreamController<Data> {
           this.pullIfNeeded()
         }
       })
-      .catch(this.handleControllerError)
+      .catch((error) => this.triggerError(error))
   }
 
-  private handleControllerError(error: Error): void {
+  private shouldCallPull(): boolean {
+    if (!this.canCloseOrEnqueue() || !this.state.started) {
+      return false
+    }
+
+    if (this.stream.locked && this.getReadRequestCount()) {
+      return true
+    }
+
+    const desizedSize = 0
+    invariant(
+      desizedSize !== null,
+      'Failed to check controller pull: desized size is null'
+    )
+
+    return desizedSize > 0
+  }
+
+  private triggerError(error: Error): void {
     this.clearQueue()
     this.clearAlgorithms()
-    this.stream['error'](error)
+    this.stream['triggerError'](error)
   }
 
   private clearQueue(): void {
